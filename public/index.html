@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>案件チェッカー</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Meiryo', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 36px 32px;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    .logo { font-size: 28px; margin-bottom: 6px; }
+    h1 { font-size: 20px; color: #1a1a2e; margin-bottom: 4px; }
+    .subtitle { color: #888; font-size: 13px; margin-bottom: 28px; }
+    label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600; }
+    input {
+      width: 100%;
+      padding: 13px 16px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 15px;
+      margin-bottom: 14px;
+      transition: border-color 0.2s;
+      color: #1a1a2e;
+    }
+    input:focus { outline: none; border-color: #4361ee; }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #4361ee;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    button:hover { background: #3451d1; }
+    button:active { transform: scale(0.99); }
+    button:disabled { background: #c0c0c0; cursor: not-allowed; }
+    .result {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .result.ng { background: #fff5f5; border-left: 4px solid #e53e3e; color: #742a2a; }
+    .result.ok { background: #f0fff4; border-left: 4px solid #38a169; color: #1a4731; }
+    .divider { border: none; border-top: 1px solid #f0f0f0; margin: 24px 0; }
+    .loading { color: #888; font-size: 13px; margin-top: 12px; display: flex; align-items: center; gap: 8px; }
+    .loading::before { content: ''; display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc; border-top-color: #4361ee; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .company-badge { display: inline-block; background: #eef2ff; color: #4361ee; padding: 3px 10px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+    .reset { display: block; text-align: center; color: #aaa; font-size: 12px; cursor: pointer; margin-top: 16px; text-decoration: underline; }
+    .reset:hover { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🔍</div>
+    <h1>案件チェッカー</h1>
+    <p class="subtitle">クライアント企業の既得権を確認・登録できます</p>
+
+    <div id="step1">
+      <label>クライアント企業名</label>
+      <input type="text" id="companyName" placeholder="例：株式会社〇〇" />
+      <button id="checkBtn" onclick="checkCompany()">照合する</button>
+      <div id="checkLoading" class="loading" style="display:none">照合中...</div>
+      <div id="checkResult"></div>
+    </div>
+
+    <div id="step2" style="display:none">
+      <hr class="divider">
+      <div id="companyBadge"></div>
+      <label>代理店名（貴社名）</label>
+      <input type="text" id="agencyName" placeholder="例：株式会社△△" />
+      <label>担当者名</label>
+      <input type="text" id="contactName" placeholder="例：田中 太郎" />
+      <button id="registerBtn" onclick="registerCompany()">登録する</button>
+      <div id="registerLoading" class="loading" style="display:none">登録中...</div>
+      <div id="registerResult"></div>
+    </div>
+
+    <span class="reset" onclick="resetAll()" id="resetBtn" style="display:none">最初からやり直す</span>
+  </div>
+
+  <script>
+    let checkedCompany = '';
+
+    async function checkCompany() {
+      const name = document.getElementById('companyName').value.trim();
+      if (!name) { alert('企業名を入力してください'); return; }
+
+      setLoading('check', true);
+      document.getElementById('checkResult').innerHTML = '';
+      document.getElementById('step2').style.display = 'none';
+      document.getElementById('resetBtn').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company_name: name })
+        });
+        const data = await res.json();
+        setLoading('check', false);
+
+        if (data.result === 'protected') {
+          show('checkResult', 'ng', `<strong>${name}</strong> は <strong>${data.deadline}</strong> まで提案期間中です。それ以降であれば提案可能です。`);
+          document.getElementById('resetBtn').style.display = 'block';
+        } else if (data.result === 'implemented') {
+          show('checkResult', 'ng', `<strong>${name}</strong> はすでに導入済みです。`);
+          document.getElementById('resetBtn').style.display = 'block';
+        } else if (data.result === 'ng') {
+          show('checkResult', 'ng', `<strong>${name}</strong> はご提案いただけない企業として登録されています。`);
+          document.getElementById('resetBtn').style.display = 'block';
+        } else if (data.result === 'available') {
+          checkedCompany = name;
+          show('checkResult', 'ok', `<strong>${name}</strong> は新規提案可能です。<br>保護期限：<strong>${data.protection_deadline}</strong> まで`);
+          document.getElementById('companyBadge').innerHTML = `<span class="company-badge">${name}</span>`;
+          document.getElementById('step2').style.display = 'block';
+        } else {
+          show('checkResult', 'ng', data.error || 'エラーが発生しました。再度お試しください。');
+          document.getElementById('resetBtn').style.display = 'block';
+        }
+      } catch (e) {
+        setLoading('check', false);
+        show('checkResult', 'ng', '通信エラーが発生しました。再度お試しください。');
+      }
+    }
+
+    async function registerCompany() {
+      const agency = document.getElementById('agencyName').value.trim();
+      const contact = document.getElementById('contactName').value.trim();
+      if (!agency || !contact) { alert('代理店名と担当者名を両方入力してください'); return; }
+
+      setLoading('register', true);
+      document.getElementById('registerResult').innerHTML = '';
+
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company_name: checkedCompany, agency_name: agency, contact_name: contact })
+        });
+        const data = await res.json();
+        setLoading('register', false);
+
+        if (data.result === 'success') {
+          show('registerResult', 'ok', `登録が完了しました。<br>保護期限：<strong>${data.deadline}</strong> まで`);
+          document.getElementById('step2').style.display = 'none';
+          document.getElementById('resetBtn').style.display = 'block';
+        } else {
+          show('registerResult', 'ng', data.error || '登録に失敗しました。再度お試しください。');
+        }
+      } catch (e) {
+        setLoading('register', false);
+        show('registerResult', 'ng', '通信エラーが発生しました。再度お試しください。');
+      }
+    }
+
+    function resetAll() {
+      document.getElementById('companyName').value = '';
+      document.getElementById('agencyName').value = '';
+      document.getElementById('contactName').value = '';
+      document.getElementById('checkResult').innerHTML = '';
+      document.getElementById('registerResult').innerHTML = '';
+      document.getElementById('step2').style.display = 'none';
+      document.getElementById('resetBtn').style.display = 'none';
+      checkedCompany = '';
+    }
+
+    function setLoading(type, on) {
+      document.getElementById(type + 'Loading').style.display = on ? 'flex' : 'none';
+      document.getElementById(type === 'check' ? 'checkBtn' : 'registerBtn').disabled = on;
+    }
+
+    function show(id, type, html) {
+      document.getElementById(id).innerHTML = `<div class="result ${type}">${html}</div>`;
+    }
+
+    document.getElementById('companyName').addEventListener('keydown', e => { if (e.key === 'Enter') checkCompany(); });
+  </script>
+</body>
+</html>
