@@ -27,6 +27,7 @@
     h1 { font-size: 20px; color: #1a1a2e; margin-bottom: 4px; }
     .subtitle { color: #888; font-size: 13px; margin-bottom: 28px; }
     label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600; }
+    .label-sub { font-weight: 400; color: #999; font-size: 12px; margin-left: 4px; }
     input {
       width: 100%;
       padding: 13px 16px;
@@ -38,6 +39,7 @@
       color: #1a1a2e;
     }
     input:focus { outline: none; border-color: #4361ee; }
+    input:read-only { background: #f8f8f8; color: #666; }
     button {
       width: 100%;
       padding: 14px;
@@ -48,10 +50,9 @@
       font-size: 15px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s, transform 0.1s;
+      transition: background 0.2s;
     }
     button:hover { background: #3451d1; }
-    button:active { transform: scale(0.99); }
     button:disabled { background: #c0c0c0; cursor: not-allowed; }
     .result {
       margin-top: 18px;
@@ -78,8 +79,8 @@
     <p class="subtitle">クライアント企業の既得権を確認・登録できます</p>
 
     <div id="step1">
-      <label>クライアント企業名</label>
-      <input type="text" id="companyName" placeholder="例：株式会社〇〇" />
+      <label>法人番号<span class="label-sub">（必須・13桁）</span></label>
+      <input type="text" id="corporateNumber" placeholder="例：1234567890123" maxlength="13" />
       <button id="checkBtn" onclick="checkCompany()">照合する</button>
       <div id="checkLoading" class="loading" style="display:none">照合中...</div>
       <div id="checkResult"></div>
@@ -88,7 +89,9 @@
     <div id="step2" style="display:none">
       <hr class="divider">
       <div id="companyBadge"></div>
-      <label>代理店名（貴社名）</label>
+      <label>クライアント企業名<span class="label-sub">（未登録の場合は入力）</span></label>
+      <input type="text" id="companyName" placeholder="例：株式会社〇〇" />
+      <label>代理店名<span class="label-sub">（貴社名）</span></label>
       <input type="text" id="agencyName" placeholder="例：株式会社△△" />
       <label>担当者名</label>
       <input type="text" id="contactName" placeholder="例：田中 太郎" />
@@ -101,11 +104,12 @@
   </div>
 
   <script>
-    let checkedCompany = '';
+    let checkedCorporateNumber = '';
+    let checkedCompanyName = '';
 
     async function checkCompany() {
-      const name = document.getElementById('companyName').value.trim();
-      if (!name) { alert('企業名を入力してください'); return; }
+      const corpNum = document.getElementById('corporateNumber').value.trim();
+      if (!corpNum) { alert('法人番号を入力してください'); return; }
 
       setLoading('check', true);
       document.getElementById('checkResult').innerHTML = '';
@@ -116,13 +120,16 @@
         const res = await fetch('/api/check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ company_name: name })
+          body: JSON.stringify({ corporate_number: corpNum })
         });
         const data = await res.json();
         setLoading('check', false);
 
+        const name = data.company_name || '';
+
         if (data.result === 'protected') {
-          show('checkResult', 'ng', `<strong>${name}</strong> は <strong>${data.deadline}</strong> まで提案期間中です。それ以降であれば提案可能です。`);
+          const deadlineText = data.deadline === '未設定' ? '（期限未設定）' : `${data.deadline}まで`;
+          show('checkResult', 'ng', `<strong>${name || '該当企業'}</strong> は <strong>${deadlineText}</strong> 提案期間中です。それ以降であれば提案可能です。`);
           document.getElementById('resetBtn').style.display = 'block';
         } else if (data.result === 'implemented') {
           show('checkResult', 'ng', `<strong>${name}</strong> はすでに導入済みです。`);
@@ -131,9 +138,21 @@
           show('checkResult', 'ng', `<strong>${name}</strong> はご提案いただけない企業として登録されています。`);
           document.getElementById('resetBtn').style.display = 'block';
         } else if (data.result === 'available') {
-          checkedCompany = name;
-          show('checkResult', 'ok', `<strong>${name}</strong> は新規提案可能です。<br>保護期限：<strong>${data.protection_deadline}</strong> まで`);
-          document.getElementById('companyBadge').innerHTML = `<span class="company-badge">${name}</span>`;
+          checkedCorporateNumber = corpNum;
+          checkedCompanyName = name;
+          const nameLabel = name ? name : '（未登録企業）';
+          show('checkResult', 'ok', `<strong>${nameLabel}</strong> は新規提案可能です。<br>保護期限：<strong>${data.protection_deadline}</strong> まで`);
+          document.getElementById('companyBadge').innerHTML = name
+            ? `<span class="company-badge">${name}</span>`
+            : '<span class="company-badge">新規企業</span>';
+          const companyInput = document.getElementById('companyName');
+          if (name) {
+            companyInput.value = name;
+            companyInput.readOnly = true;
+          } else {
+            companyInput.value = '';
+            companyInput.readOnly = false;
+          }
           document.getElementById('step2').style.display = 'block';
         } else {
           show('checkResult', 'ng', data.error || 'エラーが発生しました。再度お試しください。');
@@ -146,9 +165,11 @@
     }
 
     async function registerCompany() {
-      const agency = document.getElementById('agencyName').value.trim();
-      const contact = document.getElementById('contactName').value.trim();
-      if (!agency || !contact) { alert('代理店名と担当者名を両方入力してください'); return; }
+      const companyName = document.getElementById('companyName').value.trim();
+      const agencyName = document.getElementById('agencyName').value.trim();
+      const contactName = document.getElementById('contactName').value.trim();
+      if (!companyName) { alert('クライアント企業名を入力してください'); return; }
+      if (!agencyName || !contactName) { alert('代理店名と担当者名を両方入力してください'); return; }
 
       setLoading('register', true);
       document.getElementById('registerResult').innerHTML = '';
@@ -157,7 +178,12 @@
         const res = await fetch('/api/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ company_name: checkedCompany, agency_name: agency, contact_name: contact })
+          body: JSON.stringify({
+            corporate_number: checkedCorporateNumber,
+            company_name: companyName,
+            agency_name: agencyName,
+            contact_name: contactName
+          })
         });
         const data = await res.json();
         setLoading('register', false);
@@ -176,6 +202,7 @@
     }
 
     function resetAll() {
+      document.getElementById('corporateNumber').value = '';
       document.getElementById('companyName').value = '';
       document.getElementById('agencyName').value = '';
       document.getElementById('contactName').value = '';
@@ -183,7 +210,9 @@
       document.getElementById('registerResult').innerHTML = '';
       document.getElementById('step2').style.display = 'none';
       document.getElementById('resetBtn').style.display = 'none';
-      checkedCompany = '';
+      document.getElementById('companyName').readOnly = false;
+      checkedCorporateNumber = '';
+      checkedCompanyName = '';
     }
 
     function setLoading(type, on) {
@@ -195,7 +224,9 @@
       document.getElementById(id).innerHTML = `<div class="result ${type}">${html}</div>`;
     }
 
-    document.getElementById('companyName').addEventListener('keydown', e => { if (e.key === 'Enter') checkCompany(); });
+    document.getElementById('corporateNumber').addEventListener('keydown', e => {
+      if (e.key === 'Enter') checkCompany();
+    });
   </script>
 </body>
 </html>
