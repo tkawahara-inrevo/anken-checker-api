@@ -11,8 +11,8 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const body = req.body || {};
-    const params = new URLSearchParams(body).toString();
+    const input = req.method === 'GET' ? req.query : (req.body || {});
+    const params = new URLSearchParams(input).toString();
     const response = await fetch(GAS_URL + '?' + params, { redirect: 'follow' });
     const data = await response.json();
     res.json(data);
