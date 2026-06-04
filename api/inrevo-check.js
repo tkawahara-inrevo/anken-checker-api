@@ -1,7 +1,7 @@
 const KINTONE_DOMAIN = 'ca7n5wh2hfvv.cybozu.com';
 const KINTONE_APP = '102';
 const KINTONE_TOKEN = 'AZsoAU6lPUhmuHr0YC0H194VWQPCGkeb0Fvq6LaU';
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzwWUPshp1rug_j0fHQ9La9aS7H4PCZhXtqKAMM0u6fakOKQG28IGv0HwG2FANnC6qS/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwfMKSBQ3-8AoS2jYs0_-gVaZHhlCDHX-9t-VloOhuN9yuZxyIFraIo2CE2MvEhmVwZ/exec';
 
 const HITOTORE_YOMI = ['受注', '受注済み'];
 const BLOCK_YOMI = [
