@@ -17,20 +17,27 @@ const BLOCK_YOMI = [
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).end(); return; }
 
+  const debug = {};
+
   try {
     const body = req.body || {};
+    debug.body_type = typeof req.body;
+    debug.record_keys = Object.keys(body.record || {});
+
     const record = body.record || {};
     const recordId = body.recordId;
 
     const companyName = record['顧客']?.value;
     const yomi = record['ヨミ']?.value;
 
-    // アポ化済商談前になったときだけチェック
+    debug.companyName = companyName;
+    debug.yomi = yomi;
+    debug.yomi_match = yomi === 'アポ化済商談前';
+
     if (!companyName || yomi !== 'アポ化済商談前') {
-      return res.json({ ok: true });
+      return res.json({ ok: true, debug, reason: 'early_return' });
     }
 
-    // 同じ企業の別レコードを検索
     const query = encodeURIComponent(
       `顧客 like "${companyName}" and レコード番号 != ${recordId}`
     );
@@ -41,6 +48,8 @@ module.exports = async function handler(req, res) {
     );
     const kData = await kRes.json();
     const records = kData.records || [];
+    debug.kintone_count = records.length;
+    debug.kintone_yomis = records.map(r => r['ヨミ']?.value);
 
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
@@ -52,39 +61,36 @@ module.exports = async function handler(req, res) {
       const meetingDate = r['初回商談日_コンサルチーム']?.value;
 
       if (rYomi === '受注' || rYomi === '受注済み') {
-        reason = 'ヒトトレ受注済み';
-        break;
+        reason = 'ヒトトレ受注済み'; break;
       }
       if (BLOCK_YOMI.includes(rYomi)) {
-        reason = `INREVO商談中（ヨミ：${rYomi}）`;
-        break;
+        reason = `INREVO商談中（ヨミ：${rYomi}）`; break;
       }
       if (meetingDate && new Date(meetingDate) >= threeMonthsAgo) {
-        reason = `初回商談済み（${meetingDate}）3ヶ月以内`;
-        break;
+        reason = `初回商談済み（${meetingDate}）3ヶ月以内`; break;
       }
     }
 
+    debug.reason = reason;
+
     if (reason) {
-      await notifySlack(
-        `⚠️ *既得権アラート*\n` +
-        `*${companyName}* はすでに保護対象です。\n` +
-        `理由：${reason}\n` +
-        `重複アプローチの可能性があります。確認してください。`
+      const slackResult = await notifySlack(
+        `⚠️ *既得権アラート*\n*${companyName}* はすでに保護対象です。\n理由：${reason}\n重複アプローチの可能性があります。確認してください。`
       );
+      debug.slack = slackResult;
     }
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, debug });
   } catch (err) {
-    console.error(err);
-    return res.json({ ok: true });
+    return res.json({ ok: false, error: err.message, debug });
   }
 };
 
 async function notifySlack(text) {
   const token = process.env.SLACK_TOKEN;
-  if (!token) return;
-  await fetch('https://slack.com/api/chat.postMessage', {
+  if (!token) return { error: 'no token' };
+
+  const r = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -92,4 +98,5 @@ async function notifySlack(text) {
     },
     body: JSON.stringify({ channel: SLACK_CHANNEL, text })
   });
+  return await r.json();
 }
