@@ -140,7 +140,7 @@
         } else if (data.result === 'available') {
           checkedCorporateNumber = corpNum;
           checkedCompanyName = name;
-          const nameLabel = name ? name : '（未登録企業）';
+          const nameLabel = name ? name : '新規提案可能';
           show('checkResult', 'ok', `<strong>${nameLabel}</strong> は新規提案可能です。<br>保護期限：<strong>${data.protection_deadline}</strong> まで`);
           document.getElementById('companyBadge').innerHTML = name
             ? `<span class="company-badge">${name}</span>`
@@ -153,6 +153,8 @@
             companyInput.value = '';
             companyInput.readOnly = false;
           }
+          // 前回の登録結果をクリアしてから表示
+          document.getElementById('registerResult').innerHTML = '';
           document.getElementById('step2').style.display = 'block';
         } else {
           show('checkResult', 'ng', data.error || 'エラーが発生しました。再度お試しください。');
@@ -189,8 +191,13 @@
         setLoading('register', false);
 
         if (data.result === 'success') {
-          show('registerResult', 'ok', `登録が完了しました。<br>保護期限：<strong>${data.deadline}</strong> まで`);
+          // 登録完了後: 法人番号をクリア、会社名で結果を更新
+          document.getElementById('corporateNumber').value = '';
+          show('checkResult', 'ok',
+            `<strong>${data.company_name}</strong> の登録が完了しました。<br>保護期限：<strong>${data.deadline}</strong> まで`
+          );
           document.getElementById('step2').style.display = 'none';
+          document.getElementById('registerResult').innerHTML = '';
           document.getElementById('resetBtn').style.display = 'block';
         } else {
           show('registerResult', 'ng', data.error || '登録に失敗しました。再度お試しください。');
